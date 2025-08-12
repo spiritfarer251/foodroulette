@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍽️ Foodroulette 🍽️</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #333;
+            background-color: #fafafa;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 15px;
+            overflow: hidden;
+        }
+        
+        #refreshContainer {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        #refreshBtn {
+            background: none;
+            border: none;
+            font-size: 0.9em;
+            cursor: pointer;
+            padding: 0;
+        }
+        
+        #refreshStatus {
+            font-size: 0.7em;
+            color: #666;
+            white-space: nowrap;
+        }
+        
+        .refreshing {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+        
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 10px 0;
+        }
+        
+        h1 {
+            font-family: 'Comic Neue', cursive;
+            font-size: clamp(1.8rem, 6vw, 2.2rem);
+            margin-bottom: clamp(15px, 3vh, 25px);
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        select {
+            width: 100%;
+            padding: 12px 20px;
+            margin-bottom: clamp(10px, 2vh, 15px);
+            border: 2px solid #ddd;
+            border-radius: 50px;
+            font-size: clamp(14px, 4vw, 16px);
+            text-align: center;
+            text-align-last: center;
+            background-color: white;
+        }
+        
+        #mainButton {
+            padding: 10px 30px;
+            margin: 0 auto 15px;
+            border: none;
+            border-radius: 50px;
+            font-size: clamp(12px, 3.5vw, 14px);
+            background: #333;
+            color: white;
+            cursor: pointer;
+            display: inline-block;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+        
+        #mainButton:hover {
+            background: #555;
+            transform: scale(1.05);
+        }
+        
+        #result {
+            width: 100%;
+            margin: clamp(10px, 2vh, 20px) 0;
+            padding: 15px 0;
+            text-align: center;
+            display: none;
+        }
+        
+        .restaurant-name {
+            font-weight: bold;
+            margin: 10px 0;
+            display: inline-block;
+            color: #333;
+            text-decoration: none;
+            font-size: clamp(1rem, 4vw, 1.2rem);
+            padding: 8px 0;
+            transition: all 0.2s ease;
+        }
+        
+        .restaurant-name:hover {
+            color: #555;
+            text-decoration: underline;
+        }
+        
+        #mapToggle {
+            margin: clamp(15px, 3vh, 25px) auto;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-size: clamp(1.3rem, 6vw, 1.5rem);
+        }
+        
+        #mapContainer {
+            display: none;
+            width: 100%;
+            height: 30vh;
+            min-height: 200px;
+            max-height: 300px;
+            margin: 10px auto;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #eee;
+        }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            background-size: 1em;
+            padding-right: 30px;
+        }
+        
+        @media (max-height: 600px) {
+            .main-content {
+                padding: 5px 0;
+            }
+            h1 {
+                margin-bottom: 10px;
+            }
+            #mapContainer {
+                height: 25vh;
+                min-height: 150px;
+            }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="refreshContainer">
+        <button id="refreshBtn" title="Aktualisieren">↻</button>
+        <span id="refreshStatus"></span>
+    </div>
+
+    <div class="main-content">
+        <h1>🍽️ Foodroulette 🍽️</h1>
+        
+        <select id="locationSelect">
+            <option value="">-- Standort wählen --</option>
+        </select>
+        
+        <button id="mainButton">Suchen</button>
+        
+        <div id="result"></div>
+
+        <button id="mapToggle" title="Karte anzeigen">🗺️</button>
+        <div id="mapContainer"></div>
+    </div>
+
+    <script>
+        // Konfiguration
+        const MAP_ID = "1ipyepP4Hb-cm3nTnKFk1NxqUp33MIKY";
+        let restaurants = [];
+        
+        // Cache-Busting Funktion
+        function getCurrentTimestamp() {
+            return new Date().getTime();
+        }
+        
+        // Daten immer frisch von MyMaps laden
+        async function loadFreshData() {
+            const refreshBtn = document.getElementById("refreshBtn");
+            const statusEl = document.getElementById("refreshStatus");
+            
+            refreshBtn.classList.add("refreshing");
+            statusEl.textContent = "Lädt...";
+            
+            try {
+                // Cache-Busting Parameter hinzufügen
+                const kmlUrl = `https://www.google.com/maps/d/kml?forcekml=1&mid=${MAP_ID}&t=${getCurrentTimestamp()}`;
+                const response = await fetch(kmlUrl);
+                
+                if (!response.ok) throw new Error("Netzwerkantwort war nicht ok");
+                
+                const kmlText = await response.text();
+                const parser = new DOMParser();
+                const kmlDoc = parser.parseFromString(kmlText, "text/xml");
+                
+                // Alte Daten zurücksetzen
+                restaurants = [];
+                const select = document.getElementById("locationSelect");
+                select.innerHTML = '<option value="">-- Standort wählen --</option>';
+                
+                // Neue Daten verarbeiten
+                const categories = new Set();
+                const folders = kmlDoc.getElementsByTagName("Folder");
+                
+                for (let folder of folders) {
+                    const location = folder.getElementsByTagName("name")[0]?.textContent || "Allgemein";
+                    const places = folder.getElementsByTagName("Placemark");
+                    
+                    if (places.length > 0) {
+                        categories.add(location);
+                    }
+                    
+                    for (let place of places) {
+                        const name = place.getElementsByTagName("name")[0]?.textContent || "Unbekannt";
+                        const description = place.getElementsByTagName("description")[0]?.textContent || "";
+                        
+                        const addressParts = description.split(/<div>|<\/div>/).filter(Boolean);
+                        const street = addressParts[0]?.trim() || "";
+                        const city = addressParts[1]?.trim() || "";
+                        
+                        // Direkter Link mit Place-ID wenn verfügbar
+                        const placeIdMatch = description.match(/place_id=([^&]+)/);
+                        const mapsLink = placeIdMatch 
+                            ? `https://www.google.com/maps/place/?q=place_id:${placeIdMatch[1]}`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + " " + street + " " + city)}`;
+                        
+                        restaurants.push({
+                            name,
+                            street,
+                            city,
+                            mapsLink,
+                            location
+                        });
+                    }
+                }
+                
+                // Kategorien sortiert hinzufügen
+                Array.from(categories)
+                    .sort((a, b) => a.localeCompare(b, 'de'))
+                    .forEach(location => {
+                        const option = document.createElement("option");
+                        option.value = location;
+                        option.textContent = location;
+                        select.appendChild(option);
+                    });
+                
+                statusEl.textContent = "✓ Aktualisiert";
+            } catch (error) {
+                console.error("Fehler beim Laden:", error);
+                statusEl.textContent = "! Fehler";
+            } finally {
+                refreshBtn.classList.remove("refreshing");
+                setTimeout(() => {
+                    statusEl.textContent = "";
+                }, 2000);
+            }
+        }
+        
+        // Restaurant auswählen
+        function showResult() {
+            const location = document.getElementById("locationSelect").value;
+            if (!location) return;
+            
+            const filtered = restaurants.filter(r => r.location === location);
+            const resultDiv = document.getElementById("result");
+            
+            if (filtered.length === 0) {
+                resultDiv.innerHTML = "Keine Restaurants an diesem Standort gefunden.";
+            } else {
+                const selected = filtered[Math.floor(Math.random() * filtered.length)];
+                resultDiv.innerHTML = `
+                    <a href="${selected.mapsLink}" target="_blank" class="restaurant-name">
+                        ${selected.name}
+                    </a>
+                `;
+            }
+            
+            resultDiv.style.display = "block";
+        }
+        
+        // Karte einbetten
+        function toggleMap() {
+            const mapContainer = document.getElementById("mapContainer");
+            if (mapContainer.style.display === "none") {
+                mapContainer.style.display = "block";
+                // Cache-Busting für die Karte
+                mapContainer.innerHTML = `<iframe src="https://www.google.com/maps/d/embed?mid=${MAP_ID}&t=${getCurrentTimestamp()}" width="100%" height="100%"></iframe>`;
+            } else {
+                mapContainer.style.display = "none";
+                mapContainer.innerHTML = "";
+            }
+        }
+        
+        // Event Listener
+        document.getElementById("mainButton").addEventListener("click", showResult);
+        document.getElementById("refreshBtn").addEventListener("click", loadFreshData);
+        document.getElementById("mapToggle").addEventListener("click", toggleMap);
+        
+        // Initialisierung - immer frische Daten laden
+        loadFreshData();
+    </script>
+</body>
+</html>
